@@ -289,6 +289,8 @@
       hp: hp,
       maxHp: hp,
       r: 50,
+      dropTimer: 1.5,
+      dropInterval: Math.max(0.4, 1.8 - bossWaveNum * 0.2),
       lastHitPlayer: -1e9,
     });
     addPopup("第" + bossWaveNum + "ボス襲来！");
@@ -568,6 +570,30 @@
           e.t += dt;
           e.y = 100 + Math.sin(e.t * 1.32) * 15;
 
+          if (playing) {
+            e.dropTimer -= dt;
+            if (e.dropTimer <= 0) {
+              e.dropTimer = e.dropInterval;
+              const dx = player.x - e.x;
+              const dy = player.y - e.y;
+              const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+              const speed = rand(110, 160) + bossWaveNum * 12;
+              enemies.push({
+                emoji: "🫐",
+                isGold: false,
+                isPowerup: false,
+                isBee: false,
+                isBoss: false,
+                x: e.x,
+                y: e.y + e.r - 10,
+                vx: (dx / dist) * speed,
+                vy: (dy / dist) * speed,
+                r: 22,
+                hp: 2 + Math.min(3, Math.floor(bossWaveNum / 2)),
+              });
+            }
+          }
+
           let dmg = 0;
           for (let j = bullets.length - 1; j >= 0; j--) {
             const b = bullets[j];
@@ -629,15 +655,25 @@
           e.y = Math.max(52, Math.min(H * 0.5, e.y));
         } else {
           e.y += e.vy * dt;
+          if (e.vx) {
+            e.x += e.vx * dt;
+            if (e.x < e.r) { e.x = e.r; e.vx *= -1; }
+            if (e.x > W - e.r) { e.x = W - e.r; e.vx *= -1; }
+          }
         }
 
         let hit = false;
         for (let j = bullets.length - 1; j >= 0; j--) {
           const b = bullets[j];
           if (pointInCircle(b.x, b.y, e.x, e.y, e.r)) {
-            hit = true;
             bullets.splice(j, 1);
-            break;
+            if (e.hp !== undefined && e.hp > 1) {
+              e.hp -= 1;
+              addExplosion(e.x + rand(-6, 6), e.y + rand(-6, 6), 0.3, false);
+            } else {
+              hit = true;
+              break;
+            }
           }
         }
 
@@ -767,16 +803,43 @@
     ctx.save();
     ctx.translate(sx, sy);
 
-    ctx.fillStyle = "#e8f5e9";
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+    bgGrad.addColorStop(0, "#e8f5e9");
+    bgGrad.addColorStop(1, "#c8e6c9");
+    ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = "#a5d6a7";
-    ctx.lineWidth = 1;
-    for (let y = 0; y < H; y += 28) {
+
+    // 非常に薄い雲だけ残す
+    ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+    for (let i = 0; i < 3; i++) {
+      const cx = (now * (0.005 + i * 0.002) + i * 200) % (W + 160) - 80;
+      const cy = 40 + i * 40;
       ctx.beginPath();
+      ctx.arc(cx, cy, 25, 0, Math.PI * 2);
+      ctx.arc(cx - 20, cy + 10, 20, 0, Math.PI * 2);
+      ctx.arc(cx + 25, cy + 5, 18, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // グリッド（罫線）はスクロールさせつつ、以前のように薄く横線メインにする
+    ctx.strokeStyle = "rgba(165, 214, 167, 0.4)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const scrollY = (now * 0.06) % 28;
+    for (let y = scrollY - 28; y < H; y += 28) {
       ctx.moveTo(0, y);
       ctx.lineTo(W, y);
-      ctx.stroke();
     }
+    // 縦線は非常に薄くして間隔を広げる（主張を減らす）
+    ctx.strokeStyle = "rgba(165, 214, 167, 0.15)";
+    ctx.stroke();
+    
+    ctx.beginPath();
+    for (let x = 40; x < W; x += 80) {
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, H);
+    }
+    ctx.stroke();
 
     if (playing && dl > 0.02) {
       const pulse = 0.5 + 0.5 * Math.sin(now / 90);
@@ -803,6 +866,10 @@
       ctx.fillStyle = gBoss;
       ctx.fillRect(0, 0, W, 130);
     }
+
+    // ★重要: 絵文字（テキスト）が背景の透明色を引き継いで透過しないようリセット！
+    ctx.fillStyle = "#000000";
+    ctx.globalAlpha = 1.0;
 
     for (const e of enemies) {
       if (e.isBoss) {
