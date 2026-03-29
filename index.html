@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>福島ブルーベリー農園 — 収穫防衛</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+      background: linear-gradient(180deg, #87ceeb 0%, #e8f5e9 45%, #c8e6c9 100%);
+      color: #1b5e20;
+      padding: 1rem;
+    }
+    h1 {
+      font-size: clamp(1rem, 4vw, 1.35rem);
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      text-align: center;
+    }
+    .hud {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1.25rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.95rem;
+      font-variant-numeric: tabular-nums;
+      justify-content: center;
+      max-width: 440px;
+    }
+    .hud .tag-boost {
+      color: #e65100;
+      font-weight: 600;
+    }
+    .hud .tag-combo {
+      color: #1565c0;
+      font-weight: 600;
+    }
+    .hud .tag-boss {
+      color: #b71c1c;
+      font-weight: 700;
+    }
+    #game {
+      display: block;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 80, 40, 0.2);
+      background: #fafafa;
+      max-width: 100%;
+      touch-action: none;
+    }
+    .help {
+      margin-top: 0.75rem;
+      font-size: 0.8rem;
+      opacity: 0.85;
+      text-align: center;
+      max-width: 420px;
+    }
+    kbd {
+      font: inherit;
+      padding: 0.1em 0.35em;
+      border: 1px solid #81c784;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.6);
+    }
+    .game-over-share {
+      margin-top: 0.65rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.55rem;
+      max-width: 420px;
+    }
+    .game-over-share[hidden] {
+      display: none !important;
+    }
+    .game-over-share .share-label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #1b5e20;
+    }
+    .share-btns {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+    }
+    .share-btns a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      text-decoration: none;
+      color: #fff;
+      touch-action: manipulation;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    }
+    .share-btns a:active {
+      transform: scale(0.98);
+    }
+    .share-btns .share-tg {
+      background: #0088cc;
+    }
+    .share-btns .share-tg:hover {
+      background: #0077b3;
+    }
+    .share-btns .share-x {
+      background: #000;
+    }
+    .share-btns .share-x:hover {
+      background: #222;
+    }
+  </style>
+</head>
+<body>
+  <h1>福島ブルーベリー農園 — 収穫防衛</h1>
+  <div class="hud">
+    <span>スコア: <strong id="score">0</strong></span>
+    <span>ハイスコア: <strong id="hi">0</strong></span>
+    <span id="combo-hud" class="tag-combo">コンボ ×1.00</span>
+    <span id="boost-hud" class="tag-boost" hidden>🧺 ハイパー収穫</span>
+    <span id="boss-hud" class="tag-boss" hidden>ボス戦</span>
+  </div>
+  <canvas id="game" width="400" height="560"></canvas>
+  <div id="game-over-share" class="game-over-share" hidden>
+    <p class="share-label">スコアをシェア</p>
+    <div class="share-btns">
+      <a id="share-telegram" class="share-tg" href="#" target="_blank" rel="noopener noreferrer">Telegram で送る</a>
+      <a id="share-x" class="share-x" href="#" target="_blank" rel="noopener noreferrer">X で投稿</a>
+    </div>
+  </div>
+  <p class="help">PC: <kbd>←</kbd><kbd>→</kbd> / <kbd>A</kbd><kbd>D</kbd> 移動、<kbd>Space</kbd> で射撃。スマホ: 画面を押したまま<strong>指を左右にスライド</strong>（自機が追いつき、<strong>自動連射</strong>）。スコアが一定を超えると<strong>ボスウェーブ</strong>（巨大🫐を弾で削る）。コンボ・🧺・🐝・金色🫐は従来どおり。地面でゲームオーバー → <kbd>R</kbd> / キャンバスタップでリトライ。Telegram / X で共有可。</p>
+
+  <script>
+(function () {
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const scoreEl = document.getElementById("score");
+  const hiEl = document.getElementById("hi");
+  const gameOverShare = document.getElementById("game-over-share");
+  const shareTelegram = document.getElementById("share-telegram");
+  const shareX = document.getElementById("share-x");
+  const comboHud = document.getElementById("combo-hud");
+  const boostHud = document.getElementById("boost-hud");
+  const bossHud = document.getElementById("boss-hud");
+
+  const HI_KEY = "fbf-shooter-hi";
+  let hi = parseInt(localStorage.getItem(HI_KEY) || "0", 10) || 0;
+  hiEl.textContent = String(hi);
+
+  const W = canvas.width;
+  const H = canvas.height;
+  /** 果実の底がこの Y 以上で着地（ゲームオーバー） */
+  const GROUND_Y = H - 16;
+  /** この高さより下に入ると危険ゾーン演出 */
+  const DANGER_ZONE_TOP = H * 0.72;
+
+  const FRUITS = ["🫐", "🍐", "🌰"];
+  const SCORE_BY = { "🫐": 10, "🍐": 20, "🌰": 30 };
+  /** 出現率（通常スポーンごと）。少しレアめ。 */
+  const GOLD_SPAWN_CHANCE = 0.075;
+  const GOLD_SCORE = 100;
+  const BEE_SCORE = 45;
+  const COMBO_DECAY = 2.45;
+  const HARVEST_BOOST_SEC = 5.5;
+  const COMBO_MULT_CAP = 2.2;
+  /** 初回ボスまでのスコア。以降は撃破ごとに加算。 */
+  const FIRST_BOSS_SCORE = 280;
+  const BOSS_BONUS_BASE = 380;
+
+  let score = 0;
+  let keys = {};
+  let playing = true;
+  let shake = 0;
+  let mobileFireTimer = 0;
+  let touchActive = false;
+  let touchTargetX = W / 2;
+
+  const player = {
+    x: W / 2,
+    y: H - 48,
+    w: 44,
+    h: 28,
+    speed: 320,
+    cooldown: 0,
+  };
+
+  const bullets = [];
+  const enemies = [];
+  const explosions = [];
+  const popups = [];
+
+  let combo = 0;
+  let comboTimer = 0;
+  let harvestBoost = 0;
+  let beeCooldown = 7;
+  let bossWave = false;
+  let bossWaveNum = 0;
+  let nextBossScore = FIRST_BOSS_SCORE;
+
+  function comboMultiplier() {
+    return Math.min(COMBO_MULT_CAP, 1 + combo * 0.11);
+  }
+
+  function harvestMult() {
+    return harvestBoost > 0 ? 1.5 : 1;
+  }
+
+  function scoreFromBase(basePts) {
+    return Math.floor(basePts * comboMultiplier() * harvestMult());
+  }
+
+  function refreshComboHud() {
+    comboHud.textContent =
+      "コンボ " + combo + " ×" + comboMultiplier().toFixed(2);
+  }
+
+  function updateBoostHud() {
+    if (harvestBoost > 0) {
+      boostHud.hidden = false;
+      boostHud.textContent =
+        "🧺 ハイパー収穫 あと " + harvestBoost.toFixed(1) + "秒（得点×1.5・速射）";
+    } else {
+      boostHud.hidden = true;
+    }
+  }
+
+  function addPopup(text) {
+    popups.push({
+      text,
+      x: W / 2,
+      y: H * 0.34,
+      life: 1.05,
+      maxLife: 1.05,
+      vy: -42,
+    });
+  }
+
+  function registerComboKill() {
+    combo += 1;
+    comboTimer = COMBO_DECAY;
+    if (combo === 5) addPopup("NICE!");
+    if (combo === 10) addPopup("GREAT!");
+    if (combo === 15) addPopup("農園マスター!");
+    refreshComboHud();
+  }
+
+  function resetCombo() {
+    combo = 0;
+    comboTimer = 0;
+    refreshComboHud();
+  }
+
+  function updateBossHud(hpLeft) {
+    if (bossWave) {
+      bossHud.hidden = false;
+      bossHud.textContent =
+        "第" + bossWaveNum + "ボス戦（HP " + Math.max(0, hpLeft | 0) + "）";
+    } else {
+      bossHud.hidden = true;
+    }
+  }
+
+  function startBossWave() {
+    if (bossWave) return;
+    bossWave = true;
+    bossWaveNum += 1;
+    enemies.length = 0;
+    bullets.length = 0;
+    const hp = 20 + bossWaveNum * 8;
+    const spd = 72 + bossWaveNum * 14;
+    enemies.push({
+      isBoss: true,
+      isGold: false,
+      isPowerup: false,
+      isBee: false,
+      emoji: "🫐",
+      x: W / 2,
+      y: 108,
+      vx: spd * (Math.random() < 0.5 ? 1 : -1),
+      t: 0,
+      hp: hp,
+      maxHp: hp,
+      r: 50,
+      lastHitPlayer: -1e9,
+    });
+    addPopup("第" + bossWaveNum + "ボス襲来！");
+    updateBossHud(hp);
+  }
+
+  function endBossWave() {
+    bossWave = false;
+    nextBossScore = score + 300 + bossWaveNum * 40;
+    spawnTimer = 0.55;
+    beeCooldown = 5;
+    addPopup("ボス撃破！");
+    updateBossHud(0);
+  }
+
+  function maybeStartBossWave() {
+    if (!playing || bossWave) return;
+    if (score >= nextBossScore) startBossWave();
+  }
+
+  function rand(min, max) {
+    return min + Math.random() * (max - min);
+  }
+
+  function spawnEnemy() {
+    if (Math.random() < GOLD_SPAWN_CHANCE) {
+      enemies.push({
+        emoji: "🫐",
+        isGold: true,
+        isPowerup: false,
+        isBee: false,
+        isBoss: false,
+        x: rand(36, W - 36),
+        y: -42,
+        vy: rand(100, 185),
+        r: 26,
+      });
+      return;
+    }
+    const emoji = FRUITS[(Math.random() * FRUITS.length) | 0];
+    enemies.push({
+      emoji,
+      isGold: false,
+      isPowerup: false,
+      isBee: false,
+      isBoss: false,
+      x: rand(32, W - 32),
+      y: -36,
+      vy: rand(60, 140),
+      r: 22,
+    });
+  }
+
+  function spawnPowerup() {
+    enemies.push({
+      emoji: "🧺",
+      isGold: false,
+      isPowerup: true,
+      isBee: false,
+      isBoss: false,
+      x: rand(44, W - 44),
+      y: -34,
+      vy: rand(36, 56),
+      r: 26,
+    });
+  }
+
+  function spawnBee() {
+    const fromLeft = Math.random() < 0.5;
+    enemies.push({
+      emoji: "🐝",
+      isGold: false,
+      isPowerup: false,
+      isBee: true,
+      isBoss: false,
+      x: fromLeft ? -30 : W + 30,
+      y: rand(64, H * 0.44),
+      vx: fromLeft ? rand(125, 205) : -rand(125, 205),
+      r: 22,
+    });
+  }
+
+  let spawnTimer = 0;
+  let spawnInterval = 1.4;
+
+  function fire() {
+    if (!playing || player.cooldown > 0) return;
+    player.cooldown = harvestBoost > 0 ? 0.085 : 0.18;
+    bullets.push({
+      x: player.x,
+      y: player.y - player.h / 2,
+      vy: -420,
+      r: 4,
+    });
+  }
+
+  function addExplosion(x, y, size, gold) {
+    const parts = gold ? 14 : 10;
+    const hueMin = gold ? 38 : 15;
+    const hueMax = gold ? 55 : 45;
+    for (let i = 0; i < parts; i++) {
+      const a = (Math.PI * 2 * i) / parts + rand(-0.2, 0.2);
+      const sp = rand(80, 220) * size * (gold ? 1.15 : 1);
+      explosions.push({
+        x,
+        y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        life: rand(gold ? 0.35 : 0.25, gold ? 0.55 : 0.45),
+        maxLife: gold ? 0.55 : 0.45,
+        hue: rand(hueMin, hueMax),
+      });
+    }
+  }
+
+  function rectsOverlap(ax, ay, aw, ah, bx, by, br) {
+    const closestX = Math.max(bx - br, Math.min(ax, bx + br));
+    const closestY = Math.max(by - br, Math.min(ay, by + br));
+    const dx = ax - closestX;
+    const dy = ay - closestY;
+    return dx * dx + dy * dy < br * br;
+  }
+
+  function pointInCircle(px, py, cx, cy, r) {
+    const dx = px - cx;
+    const dy = py - cy;
+    return dx * dx + dy * dy <= r * r;
+  }
+
+  let last = performance.now();
+
+  function sharePageUrl() {
+    const u = typeof location !== "undefined" ? location.href : "";
+    return /^https?:\/\//i.test(u) ? u : "";
+  }
+
+  function buildShareText() {
+    const title = "福島ブルーベリー農園「収穫防衛」";
+    return `${title}\n今回のスコア: ${score} 点\nハイスコア: ${hi} 点`;
+  }
+
+  function refreshShareLinks() {
+    const text = buildShareText();
+    const url = sharePageUrl();
+    const tg =
+      "https://t.me/share/url?url=" +
+      encodeURIComponent(url) +
+      "&text=" +
+      encodeURIComponent(text);
+    let xIntent =
+      "https://x.com/intent/tweet?text=" + encodeURIComponent(text);
+    if (url) xIntent += "&url=" + encodeURIComponent(url);
+    xIntent += "&hashtags=" + encodeURIComponent("福島ブルーベリー,収穫防衛");
+    shareTelegram.href = tg;
+    shareX.href = xIntent;
+  }
+
+  function showGameOverShare() {
+    refreshShareLinks();
+    gameOverShare.hidden = false;
+  }
+
+  function hideGameOverShare() {
+    gameOverShare.hidden = true;
+    shareTelegram.href = "#";
+    shareX.href = "#";
+  }
+
+  function gameOver(fx, fy, gold) {
+    playing = false;
+    shake = 14;
+    if (fx != null) addExplosion(fx, fy, 1.25, gold);
+    addExplosion(W / 2, GROUND_Y - 8, 1.8, false);
+    showGameOverShare();
+  }
+
+  function restart() {
+    score = 0;
+    scoreEl.textContent = "0";
+    playing = true;
+    shake = 0;
+    player.x = W / 2;
+    player.cooldown = 0;
+    bullets.length = 0;
+    enemies.length = 0;
+    explosions.length = 0;
+    spawnTimer = 0;
+    spawnInterval = 1.4;
+    mobileFireTimer = 0;
+    last = performance.now();
+    hideGameOverShare();
+    resetCombo();
+    harvestBoost = 0;
+    beeCooldown = 7;
+    popups.length = 0;
+    updateBoostHud();
+    bossWave = false;
+    bossWaveNum = 0;
+    nextBossScore = FIRST_BOSS_SCORE;
+    updateBossHud(0);
+  }
+
+  function dangerLevel(now) {
+    let d = 0;
+    for (const e of enemies) {
+      if (e.isBee || e.isPowerup || e.isBoss) continue;
+      if (e.y < DANGER_ZONE_TOP) continue;
+      const t = (e.y - DANGER_ZONE_TOP) / (GROUND_Y - DANGER_ZONE_TOP);
+      d = Math.max(d, Math.min(1, t));
+    }
+    return d;
+  }
+
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+
+    if (playing) {
+      if (player.cooldown > 0) player.cooldown -= dt;
+
+      comboTimer -= dt;
+      if (comboTimer <= 0 && combo > 0) resetCombo();
+      if (harvestBoost > 0) {
+        harvestBoost -= dt;
+        if (harvestBoost <= 0) harvestBoost = 0;
+        updateBoostHud();
+      }
+
+      if (touchActive) {
+        const tx = touchTargetX;
+        const follow = Math.min(1, 14 * dt);
+        player.x += (tx - player.x) * follow;
+        player.x = Math.max(player.w / 2 + 4, Math.min(W - player.w / 2 - 4, player.x));
+        mobileFireTimer -= dt;
+        if (mobileFireTimer <= 0) {
+          mobileFireTimer = harvestBoost > 0 ? 0.1 : 0.22;
+          fire();
+        }
+      } else {
+        let move = 0;
+        if (keys["ArrowLeft"] || keys["a"] || keys["A"]) move -= 1;
+        if (keys["ArrowRight"] || keys["d"] || keys["D"]) move += 1;
+        player.x += move * player.speed * dt;
+        player.x = Math.max(player.w / 2 + 4, Math.min(W - player.w / 2 - 4, player.x));
+        if (keys[" "] || keys["Spacebar"]) fire();
+      }
+
+      if (!bossWave) {
+        spawnTimer -= dt;
+        if (spawnTimer <= 0) {
+          spawnEnemy();
+          if (Math.random() < 0.036) spawnPowerup();
+          spawnTimer = spawnInterval;
+          spawnInterval = Math.max(0.55, spawnInterval - 0.008);
+        }
+
+        beeCooldown -= dt;
+        if (beeCooldown <= 0) {
+          spawnBee();
+          beeCooldown = rand(11, 21);
+        }
+      }
+
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.y += b.vy * dt;
+        if (b.y < -10) bullets.splice(i, 1);
+      }
+
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        const e = enemies[i];
+
+        if (e.isBoss) {
+          e.x += e.vx * dt;
+          if (e.x < e.r + 12) e.vx = Math.abs(e.vx);
+          if (e.x > W - e.r - 12) e.vx = -Math.abs(e.vx);
+          e.t += dt;
+          e.y = 100 + Math.sin(e.t * 1.32) * 15;
+
+          let dmg = 0;
+          for (let j = bullets.length - 1; j >= 0; j--) {
+            const b = bullets[j];
+            if (pointInCircle(b.x, b.y, e.x, e.y, e.r)) {
+              dmg++;
+              bullets.splice(j, 1);
+            }
+          }
+          if (dmg > 0) {
+            e.hp -= dmg;
+            const sparks = Math.min(dmg, 6);
+            for (let h = 0; h < sparks; h++) {
+              addExplosion(
+                e.x + rand(-20, 20),
+                e.y + rand(-16, 16),
+                0.3,
+                false
+              );
+            }
+            if (e.hp <= 0) {
+              const bonus = scoreFromBase(BOSS_BONUS_BASE + bossWaveNum * 90);
+              score += bonus;
+              scoreEl.textContent = String(score);
+              if (score > hi) {
+                hi = score;
+                localStorage.setItem(HI_KEY, String(hi));
+                hiEl.textContent = String(hi);
+              }
+              registerComboKill();
+              addExplosion(e.x, e.y, 2.5, true);
+              enemies.splice(i, 1);
+              endBossWave();
+            }
+          }
+
+          const bodyBoss = rectsOverlap(
+            player.x - player.w / 2,
+            player.y - player.h / 2,
+            player.w,
+            player.h,
+            e.x,
+            e.y,
+            e.r - 8
+          );
+          if (bodyBoss && now - e.lastHitPlayer > 680) {
+            e.lastHitPlayer = now;
+            score = Math.max(0, score - 38);
+            scoreEl.textContent = String(score);
+            resetCombo();
+            addExplosion(player.x, player.y, 0.9, false);
+            shake = Math.min(12, shake + 5);
+          }
+          continue;
+        }
+
+        if (e.isBee) {
+          e.x += e.vx * dt;
+          e.y += Math.sin(now / 190 + e.x * 0.028) * 32 * dt;
+          e.y = Math.max(52, Math.min(H * 0.5, e.y));
+        } else {
+          e.y += e.vy * dt;
+        }
+
+        let hit = false;
+        for (let j = bullets.length - 1; j >= 0; j--) {
+          const b = bullets[j];
+          if (pointInCircle(b.x, b.y, e.x, e.y, e.r)) {
+            hit = true;
+            bullets.splice(j, 1);
+            break;
+          }
+        }
+
+        if (hit) {
+          if (e.isPowerup) {
+            harvestBoost = HARVEST_BOOST_SEC;
+            updateBoostHud();
+            addExplosion(e.x, e.y, 1.1, true);
+            enemies.splice(i, 1);
+            continue;
+          }
+          if (e.isBee) {
+            const gained = scoreFromBase(BEE_SCORE);
+            score += gained;
+            scoreEl.textContent = String(score);
+            if (score > hi) {
+              hi = score;
+              localStorage.setItem(HI_KEY, String(hi));
+              hiEl.textContent = String(hi);
+            }
+            registerComboKill();
+            addExplosion(e.x, e.y, 0.85, false);
+            enemies.splice(i, 1);
+            continue;
+          }
+          const basePts = e.isGold ? GOLD_SCORE : SCORE_BY[e.emoji] || 10;
+          const gained = scoreFromBase(basePts);
+          score += gained;
+          scoreEl.textContent = String(score);
+          if (score > hi) {
+            hi = score;
+            localStorage.setItem(HI_KEY, String(hi));
+            hiEl.textContent = String(hi);
+          }
+          registerComboKill();
+          addExplosion(e.x, e.y, e.isGold ? 1.15 : 1, e.isGold);
+          enemies.splice(i, 1);
+          continue;
+        }
+
+        if (e.isBee && (e.x < -55 || e.x > W + 55)) {
+          enemies.splice(i, 1);
+          continue;
+        }
+
+        if (e.isPowerup && e.y + e.r >= GROUND_Y) {
+          enemies.splice(i, 1);
+          continue;
+        }
+
+        if (!e.isBee && !e.isPowerup && !e.isBoss && e.y + e.r >= GROUND_Y) {
+          gameOver(e.x, e.y, e.isGold);
+          break;
+        }
+
+        const px = player.x;
+        const py = player.y;
+        const body = rectsOverlap(
+          px - player.w / 2,
+          py - player.h / 2,
+          player.w,
+          player.h,
+          e.x,
+          e.y,
+          e.r - 4
+        );
+
+        if (e.isPowerup && body) {
+          harvestBoost = HARVEST_BOOST_SEC;
+          updateBoostHud();
+          addExplosion(e.x, e.y, 1.1, true);
+          enemies.splice(i, 1);
+          continue;
+        }
+
+        if (e.isBee && body) {
+          score = Math.max(0, score - 25);
+          scoreEl.textContent = String(score);
+          resetCombo();
+          addExplosion(player.x, player.y, 0.95, false);
+          enemies.splice(i, 1);
+          continue;
+        }
+
+        if (!e.isBee && !e.isPowerup && !e.isBoss && body) {
+          addExplosion(player.x, player.y, 1.2, e.isGold);
+          score = Math.max(0, score - 50);
+          scoreEl.textContent = String(score);
+          resetCombo();
+          enemies.splice(i, 1);
+        }
+      }
+
+      maybeStartBossWave();
+      if (bossWave) {
+        const b = enemies.find(function (x) {
+          return x.isBoss;
+        });
+        if (b) updateBossHud(b.hp);
+      }
+    }
+
+    for (let i = popups.length - 1; i >= 0; i--) {
+      const p = popups[i];
+      p.life -= dt;
+      p.y += p.vy * dt;
+      if (p.life <= 0) popups.splice(i, 1);
+    }
+
+    const dl = playing ? dangerLevel(now) : 0;
+    if (playing && dl > 0.35) {
+      shake = Math.min(10, shake + dl * 42 * dt);
+    }
+    shake *= Math.pow(0.88, dt * 60);
+    const sx = playing ? (Math.random() - 0.5) * shake * 2 : 0;
+    const sy = playing ? (Math.random() - 0.5) * shake * 2 : 0;
+
+    for (let i = explosions.length - 1; i >= 0; i--) {
+      const p = explosions[i];
+      p.life -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 120 * dt;
+      if (p.life <= 0) explosions.splice(i, 1);
+    }
+
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    ctx.fillStyle = "#e8f5e9";
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "#a5d6a7";
+    ctx.lineWidth = 1;
+    for (let y = 0; y < H; y += 28) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+
+    if (playing && dl > 0.02) {
+      const pulse = 0.5 + 0.5 * Math.sin(now / 90);
+      const a = (0.12 + dl * 0.38 * pulse) * dl;
+      const g = ctx.createLinearGradient(0, DANGER_ZONE_TOP, 0, H);
+      g.addColorStop(0, `rgba(255, 80, 80, 0)`);
+      g.addColorStop(0.55, `rgba(255, 60, 60, ${a * 0.5})`);
+      g.addColorStop(1, `rgba(200, 0, 0, ${a})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, DANGER_ZONE_TOP, W, H - DANGER_ZONE_TOP);
+      if (dl > 0.55) {
+        ctx.strokeStyle = `rgba(180, 0, 0, ${0.25 + dl * 0.45})`;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(1.5, DANGER_ZONE_TOP + 1.5, W - 3, H - DANGER_ZONE_TOP - 3);
+      }
+    }
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    if (playing && bossWave) {
+      const gBoss = ctx.createLinearGradient(0, 0, 0, 130);
+      gBoss.addColorStop(0, "rgba(74, 20, 140, 0.14)");
+      gBoss.addColorStop(1, "rgba(74, 20, 140, 0)");
+      ctx.fillStyle = gBoss;
+      ctx.fillRect(0, 0, W, 130);
+    }
+
+    for (const e of enemies) {
+      if (e.isBoss) {
+        ctx.save();
+        ctx.shadowColor = "rgba(90, 20, 80, 0.45)";
+        ctx.shadowBlur = 28;
+        ctx.font = "86px sans-serif";
+        ctx.fillText(e.emoji, e.x, e.y);
+        ctx.shadowBlur = 0;
+        const ratio = e.maxHp > 0 ? e.hp / e.maxHp : 0;
+        const bw = 128;
+        const bx = e.x - bw / 2;
+        const by = e.y - e.r - 20;
+        ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+        ctx.fillRect(bx, by, bw, 9);
+        ctx.fillStyle = ratio > 0.3 ? "#2e7d32" : "#b71c1c";
+        ctx.fillRect(bx, by, bw * ratio, 9);
+        ctx.font = "bold 12px sans-serif";
+        ctx.fillStyle = "#4a148c";
+        ctx.fillText("巨大実・BOSS", e.x, e.y + e.r + 16);
+        ctx.restore();
+      } else if (e.isPowerup) {
+        ctx.save();
+        const bob = Math.sin(now / 170 + e.x * 0.04) * 3;
+        ctx.font = "32px sans-serif";
+        ctx.fillText(e.emoji, e.x, e.y + bob);
+        ctx.font = "bold 10px sans-serif";
+        ctx.fillStyle = "#e65100";
+        ctx.fillText("BOOST", e.x, e.y + e.r + 7);
+        ctx.restore();
+      } else if (e.isBee) {
+        ctx.font = "26px sans-serif";
+        ctx.fillText(e.emoji, e.x, e.y);
+      } else if (e.isGold) {
+        ctx.save();
+        const glint = 0.88 + 0.12 * Math.sin(now / 160);
+        ctx.globalAlpha = glint;
+        ctx.shadowColor = "#ffcc00";
+        ctx.shadowBlur = 20;
+        ctx.font = "36px sans-serif";
+        ctx.fillText(e.emoji, e.x, e.y);
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 0.95;
+        ctx.font = "bold 11px sans-serif";
+        ctx.fillStyle = "#b8860b";
+        ctx.fillText("GOLD", e.x, e.y + e.r + 8);
+        ctx.restore();
+      } else {
+        ctx.font = "28px sans-serif";
+        ctx.fillText(e.emoji, e.x, e.y);
+      }
+    }
+
+    ctx.fillStyle = "#2e7d32";
+    ctx.beginPath();
+    ctx.moveTo(player.x, player.y - player.h / 2);
+    ctx.lineTo(player.x - player.w / 2, player.y + player.h / 2);
+    ctx.lineTo(player.x + player.w / 2, player.y + player.h / 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#1b5e20";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = "#fff59d";
+    for (const b of bullets) {
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    for (const p of explosions) {
+      const t = p.life / p.maxLife;
+      ctx.globalAlpha = Math.max(0, t);
+      ctx.fillStyle = `hsl(${p.hue}, 90%, ${50 + (1 - t) * 20}%)`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 4 + (1 - t) * 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.font = "bold 22px sans-serif";
+    ctx.textAlign = "center";
+    for (const pop of popups) {
+      const t = pop.life / pop.maxLife;
+      ctx.globalAlpha = Math.min(1, t * 1.4);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.lineWidth = 4;
+      ctx.strokeText(pop.text, pop.x, pop.y);
+      ctx.fillStyle = "#1565c0";
+      ctx.fillText(pop.text, pop.x, pop.y);
+      ctx.globalAlpha = 1;
+    }
+
+    if (!playing) {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.48)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 26px sans-serif";
+      ctx.fillText("ゲームオーバー", W / 2, H / 2 - 40);
+      ctx.font = "18px sans-serif";
+      ctx.fillText("スコア: " + score, W / 2, H / 2 - 4);
+      ctx.font = "15px sans-serif";
+      ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+      ctx.fillText("R または Enter でリトライ（タップ可）", W / 2, H / 2 + 32);
+    }
+
+    ctx.restore();
+
+    requestAnimationFrame(loop);
+  }
+
+  window.addEventListener("keydown", (e) => {
+    if (!playing && (e.key === "r" || e.key === "R" || e.key === "Enter")) {
+      restart();
+      return;
+    }
+    keys[e.key] = true;
+    if (e.key === " ") e.preventDefault();
+  });
+  window.addEventListener("keyup", (e) => {
+    keys[e.key] = false;
+  });
+
+  function clientXToCanvasX(clientX) {
+    const rect = canvas.getBoundingClientRect();
+    const nx = Math.max(0, Math.min(clientX - rect.left, rect.width));
+    const x = (nx / rect.width) * W;
+    return Math.max(player.w / 2 + 4, Math.min(W - player.w / 2 - 4, x));
+  }
+
+  function updateTouchTargetFromEvent(e) {
+    if (e.touches.length === 0) return;
+    touchTargetX = clientXToCanvasX(e.touches[0].clientX);
+  }
+
+  canvas.addEventListener(
+    "touchstart",
+    (e) => {
+      e.preventDefault();
+      if (!playing) {
+        restart();
+        return;
+      }
+      touchActive = true;
+      updateTouchTargetFromEvent(e);
+      mobileFireTimer = 0;
+      fire();
+    },
+    { passive: false }
+  );
+  canvas.addEventListener(
+    "touchmove",
+    (e) => {
+      e.preventDefault();
+      if (!touchActive) return;
+      updateTouchTargetFromEvent(e);
+    },
+    { passive: false }
+  );
+  function endTouchIfNone(e) {
+    e.preventDefault();
+    if (e.touches.length === 0) touchActive = false;
+  }
+  canvas.addEventListener("touchend", endTouchIfNone, { passive: false });
+  canvas.addEventListener("touchcancel", endTouchIfNone, { passive: false });
+
+  refreshComboHud();
+  requestAnimationFrame(loop);
+})();
+  </script>
+</body>
+</html>
