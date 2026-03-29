@@ -3,6 +3,12 @@
 **福島のブルーベリー農園をモチーフにした、横スクロール風のシンプルなシューティングゲームです。**  
 上から落ちてくる果実（🫐・🍐・🌰）や金色レア、ボスなどを撃ち落とし、地面に落とさないようにスコアを稼ぎます。PC のキーボードと、スマホのタッチの両方に対応しています。
 
+### いま遊べる URL（GitHub Pages）
+
+**https://aymfksm1234.github.io/fukushima-blueberry-farm-shooter/**  
+
+反映直後は 1〜2 分ほど待つと表示されます。スマホのブラウザからもそのまま開けます。
+
 ## このリポジトリでできること
 
 | 内容 | 説明 |
@@ -25,14 +31,12 @@
 - `index.html` をブラウザにドラッグ＆ドロップ
 - VS Code の「Live Server」などで `index.html` を開く
 
-## GitHub Pages で公開する
+## GitHub Pages（別環境で自分用に公開するとき）
 
-1. このリポジトリを GitHub に push する（空のリポジトリを作り、中身を上げる）。
-2. GitHub 上で **Settings → Pages** を開く。
-3. **Build and deployment** で **Source** を **Deploy from a branch** にし、**Branch** を `main`（または `master`）、フォルダを **`/ (root)`** に設定して Save。
-4. 1〜2 分待つと、`https://<あなたのユーザー名>.github.io/<リポジトリ名>/` でアクセスできます（URL はリポジトリの **Settings → Pages** に表示されます）。
+1. リポジトリを GitHub に push する。
+2. **Settings → Pages** で **Branch** を `main`、フォルダ **`/ (root)`** を選んで Save。
 
-> **スマホで遊ぶには**、上記の **https の URL** を開いてください。`file://` で開いたページは共有ボタンの URL が正しく動かない場合があります。
+> スマホで遊ぶときは **https の Pages URL** を使ってください。`file://` だと共有ボタンが期待どおり動かないことがあります。
 
 ## 技術スタック
 
